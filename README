@@ -1,3 +1,7 @@
+## BCFtools plugin hacks
+This repository contains 'hacked' plugins so that we can write out meta information while the functions are running. For example, trio-switch-error, we write out the trios who are and positions that contains switches.
+
+## original title
 BCFtools implements utilities for variant calling (in conjunction with
 SAMtools) and manipulating VCF and BCF files.  The program is intended
 to replace the Perl-based tools from vcftools.
