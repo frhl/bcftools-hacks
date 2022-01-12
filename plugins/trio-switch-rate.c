@@ -95,21 +95,21 @@ const char *usage(void)
         "\n";
 }
 
-void parse_af(args_t *args, char *fname) {
-  FILE *fp; 
-  char str[60];
-  fp = fopen(fname, "r");
-  args->af = (float *)malloc(sizeof(float));
-  int af_sites = 0;
-  while (fgets(str, 60, fp)!=NULL)  {
-    args->af = (float *)realloc(args->af, (af_sites + 1) * sizeof(float));
-    args->af[af_sites] = atof(str);
-    af_sites++;
-  }
-  args->af_sites = af_sites; 
-  fclose(fp);
-
-}
+//void parse_af(args_t *args, char *fname) {
+//  FILE *fp; 
+//  char str[60];
+//  fp = fopen(fname, "r");
+//  args->af = (float *)malloc(sizeof(float));
+//  int af_sites = 0;
+//  while (fgets(str, 60, fp)!=NULL)  {
+//    args->af = (float *)realloc(args->af, (af_sites + 1) * sizeof(float));
+//    args->af[af_sites] = atof(str);
+//    af_sites++;
+//  }
+//  args->af_sites = af_sites; 
+//  fclose(fp);
+//
+//}
 
 void parse_ped(args_t *args, char *fname)
 {
@@ -172,22 +172,23 @@ int init(int argc, char **argv, bcf_hdr_t *in, bcf_hdr_t *out)
     args.prev_rid = -1;
     args.hdr = in;
     char *ped_fname = NULL;
-    char *af_fname = NULL;
+    //char *af_fname = NULL;
     char *ncount = NULL;
     static struct option loptions[] =
     {
         {"ped",required_argument,NULL,'p'},
-        {"af",required_argument, NULL,'a'},
+        // {"af",required_argument, NULL,'a'},
         {"ncount", required_argument, NULL, 'c'},
         {0,0,0,0}
     };
     int c;
-    while ((c = getopt_long(argc, argv, "?ha:p:c:",loptions,NULL)) >= 0)
+    //while ((c = getopt_long(argc, argv, "?ha:p:c:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "?h:p:c:",loptions,NULL)) >= 0)
     {
         switch (c) 
         {
             case 'p': ped_fname = optarg; break;
-            case 'a': af_fname = optarg; break;
+            //case 'a': af_fname = optarg; break;
             case 'c': ncount = optarg; break;
             case 'h':
             case '?':
@@ -195,11 +196,12 @@ int init(int argc, char **argv, bcf_hdr_t *in, bcf_hdr_t *out)
         }
     }
     if ( !ped_fname ) error("Expected the -p option\n");
-    if ( af_fname && !ncount) error("must supply the ncount.\n");
+    //if ( af_fname && !ncount) error("must supply the ncount.\n");
     parse_ped(&args, ped_fname);
-    parse_af(&args, af_fname);
+    //parse_af(&args, af_fname);
     args.ncount = atoi(ncount);
     args.this_pos = 0;
+    printf("TRIO\tPos\tnSwitch\tSwitch\n");
     return 1;
 }
 
@@ -237,8 +239,6 @@ bcf1_t *process(bcf1_t *rec)
     }
 
     gt_t child, father, mother;
-    //printf("%d-%f\t", args.this_pos, args.af[args.this_pos]);
-    //printf("TRIO\tPos\tAC\tnSwitch\tSwitch\n");
     for (i=0; i<args.ntrio; i++)
     {
         trio_t *trio = &args.trio[i];
@@ -270,11 +270,6 @@ bcf1_t *process(bcf1_t *rec)
         } else trio->prev_switch = 0;  
 
         printf("%d\t%d\t%d\t%d\n", i, args.this_pos,trio->nswitch, trio->prev_switch);
-        //printf("%d\t%d\t%f\t%d\t%d\n", i, args.this_pos, args.af[args.this_pos],trio->nswitch, trio->prev_switch);
-        //if ( trio->prev > 0 )
-        //{
-        //    if ( trio->prev!=test_phase ) trio->nswitch++;
-        //}
         trio->ntest++;
         trio->prev = test_phase;
     }
@@ -294,7 +289,7 @@ void destroy(void)
     for (i=0; i<args.ntrio; i++)
     {
         trio_t *trio = &args.trio[i];
-        printf("TRIO\t%s\t%s\t%s\t%d\t%d\t%d\t%.2f\n",
+        printf("# TRIO\t%s\t%s\t%s\t%d\t%d\t%d\t%.2f\n",
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->father),
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->mother),
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->child),
@@ -313,7 +308,7 @@ void destroy(void)
     for (i=0; i<args.npop; i++)
     {
         pop_t *pop = &args.pop[i];
-        printf("POP\t%s\t%d\t%.0f\t%.0f\t%.0f\t%.2f\n", pop->name,pop->ntrio,
+        printf("# POP\t%s\t%d\t%.0f\t%.0f\t%.0f\t%.2f\n", pop->name,pop->ntrio,
             (float)pop->ntest/pop->ntrio,(float)pop->err/pop->ntrio,(float)pop->nswitch/pop->ntrio,
             pop->pswitch/pop->ntrio);
     }

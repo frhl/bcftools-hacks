@@ -1,1 +1,1 @@
-#define BCFTOOLS_VERSION "1.12"
+#define BCFTOOLS_VERSION "a2550b8-dirty"
