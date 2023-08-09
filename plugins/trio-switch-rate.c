@@ -3,17 +3,17 @@
    Copyright (c) 2016 Genome Research Ltd.
 
    Author: Petr Danecek <pd3@sanger.ac.uk>
-   
+
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
    in the Software without restriction, including without limitation the rights
    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
    copies of the Software, and to permit persons to whom the Software is
    furnished to do so, subject to the following conditions:
-   
+
    The above copyright notice and this permission notice shall be included in
    all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,6 +39,7 @@ typedef struct
 {
     int father, mother, child;      // VCF sample index
     int prev, ipop;
+    int prev_switch, nflip;
     uint32_t err, nswitch, ntest;
 }
 trio_t;
@@ -62,6 +63,10 @@ typedef struct
     int npop;
     pop_t *pop;
     int mgt_arr, prev_rid;
+    float *af;
+    int af_sites;
+    int this_pos;
+    int ncount;
 }
 args_t;
 
@@ -74,7 +79,7 @@ const char *about(void)
 
 const char *usage(void)
 {
-    return 
+    return
         "\n"
         "About: Calculate phase switch rate in trio children.\n"
         "Usage: bcftools +trio-swich-rate [General Options] -- [Plugin Options]\n"
@@ -89,6 +94,22 @@ const char *usage(void)
         "   bcftools +trio-switch-rate file.bcf -- -p file.ped\n"
         "\n";
 }
+
+//void parse_af(args_t *args, char *fname) {
+//  FILE *fp;
+//  char str[60];
+//  fp = fopen(fname, "r");
+//  args->af = (float *)malloc(sizeof(float));
+//  int af_sites = 0;
+//  while (fgets(str, 60, fp)!=NULL)  {
+//    args->af = (float *)realloc(args->af, (af_sites + 1) * sizeof(float));
+//    args->af[af_sites] = atof(str);
+//    af_sites++;
+//  }
+//  args->af_sites = af_sites;
+//  fclose(fp);
+//
+//}
 
 void parse_ped(args_t *args, char *fname)
 {
@@ -151,24 +172,36 @@ int init(int argc, char **argv, bcf_hdr_t *in, bcf_hdr_t *out)
     args.prev_rid = -1;
     args.hdr = in;
     char *ped_fname = NULL;
+    //char *af_fname = NULL;
+    char *ncount = NULL;
     static struct option loptions[] =
     {
         {"ped",required_argument,NULL,'p'},
+        // {"af",required_argument, NULL,'a'},
+        {"ncount", required_argument, NULL, 'c'},
         {0,0,0,0}
     };
     int c;
-    while ((c = getopt_long(argc, argv, "?hp:",loptions,NULL)) >= 0)
+    //while ((c = getopt_long(argc, argv, "?ha:p:c:",loptions,NULL)) >= 0)
+    while ((c = getopt_long(argc, argv, "?h:p:c:",loptions,NULL)) >= 0)
     {
-        switch (c) 
+        switch (c)
         {
             case 'p': ped_fname = optarg; break;
+            //case 'a': af_fname = optarg; break;
+            case 'c': ncount = optarg; break;
             case 'h':
             case '?':
             default: error("%s", usage()); break;
         }
     }
     if ( !ped_fname ) error("Expected the -p option\n");
+    //if ( af_fname && !ncount) error("must supply the ncount.\n");
     parse_ped(&args, ped_fname);
+    //parse_af(&args, af_fname);
+    args.ncount = atoi(ncount);
+    args.this_pos = 0;
+    printf("TRIO\tPos\tnSwitch\tSwitch\n");
     return 1;
 }
 
@@ -219,16 +252,29 @@ bcf1_t *process(bcf1_t *rec)
         if ( father.a+father.b == 1 && mother.a+mother.b == 1 ) continue;     // both parents are hets
         if ( father.a+father.b == mother.a+mother.b ) { trio->err++; continue; }    // mendelian error
 
-        int test_phase = 0; 
+        int test_phase = 0;
         if ( father.a==father.b ) test_phase = 1 + (child.a==father.a);
         else if ( mother.a==mother.b ) test_phase = 1 + (child.b==mother.a);
+
         if ( trio->prev > 0 )
         {
-            if ( trio->prev!=test_phase ) trio->nswitch++;
-        }
+            if ( trio->prev!=test_phase ) {
+              // Don't count the singleton switches
+              //if (args.af[args.this_pos] > args.ncount) {
+                if (trio->prev_switch == 1) trio->nflip++;
+                trio->nswitch++;
+              //}
+              trio->prev_switch = 1;
+            }
+            else trio->prev_switch = 0;
+        } else trio->prev_switch = 0;
+
+        printf("%d\t%d\t%d\t%d\n", i, args.this_pos,trio->nswitch, trio->prev_switch);
         trio->ntest++;
         trio->prev = test_phase;
     }
+
+    args.this_pos++;
     return NULL;
 }
 
@@ -243,7 +289,7 @@ void destroy(void)
     for (i=0; i<args.ntrio; i++)
     {
         trio_t *trio = &args.trio[i];
-        printf("TRIO\t%s\t%s\t%s\t%d\t%d\t%d\t%.2f\n",
+        printf("# TRIO\t%s\t%s\t%s\t%d\t%d\t%d\t%.2f\n",
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->father),
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->mother),
             bcf_hdr_int2id(args.hdr,BCF_DT_SAMPLE,trio->child),
@@ -262,7 +308,7 @@ void destroy(void)
     for (i=0; i<args.npop; i++)
     {
         pop_t *pop = &args.pop[i];
-        printf("POP\t%s\t%d\t%.0f\t%.0f\t%.0f\t%.2f\n", pop->name,pop->ntrio,
+        printf("# POP\t%s\t%d\t%.0f\t%.0f\t%.0f\t%.2f\n", pop->name,pop->ntrio,
             (float)pop->ntest/pop->ntrio,(float)pop->err/pop->ntrio,(float)pop->nswitch/pop->ntrio,
             pop->pswitch/pop->ntrio);
     }
@@ -271,3 +317,4 @@ void destroy(void)
     free(args.trio);
     free(args.gt_arr);
 }
+
